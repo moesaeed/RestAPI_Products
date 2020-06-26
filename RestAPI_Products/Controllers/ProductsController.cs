@@ -1,10 +1,12 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using RestAPI_Core.Business;
 using RestAPI_Core.Contracts;
 using System.Threading.Tasks;
 
 namespace RestAPI_Products.Controllers
 {
+    [Authorize]
     [Route("api/v1/[controller]")]
     [ApiController]
     public class ProductsController : ControllerBase
@@ -24,6 +26,7 @@ namespace RestAPI_Products.Controllers
         }
 
         // GET api/v1/products
+        [AllowAnonymous]
         [HttpGet]
         public async Task<ProductResponse> Get()
         {
