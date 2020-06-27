@@ -10,52 +10,43 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 
-
-
-
 namespace RestAPI_Core.Business
 {
     public class UserService : IUserService
     {
-        // users hardcoded for simplicity, store in a db with hashed passwords in production applications
-        private List<User> _users = new List<User>
-        {
-            new User { Id = 1, FirstName = "Test", LastName = "User", Username = "test", Password = "test" }
-        };
-
-        //string _appSettingsSecret = "Hello";
+        private DataContext _context;
         private readonly AppSettings _appSettings;
 
-        public UserService(IOptions<AppSettings> appSettings)
+        public UserService(
+            DataContext context,
+            IOptions<AppSettings> appSettings)
         {
+            _context = context;
             _appSettings = appSettings.Value;
         }
 
         public AuthenticateResponse Authenticate(AuthenticateRequest model, string ipAddress)
         {
-            //var user =  _context.Users.SingleOrDefault(x => x.Username == model.Username && x.Password == model.Password);
-
-            var user = _users.SingleOrDefault(x => x.Username == model.Username && x.Password == model.Password);
+            var user = _context.Users.SingleOrDefault(x => x.Username == model.Username && x.Password == model.Password);
 
             // return null if user not found
             if (user == null) return null;
 
-            // authentication successful so generate jwt token
-            var token = generateJwtToken(user);
+            // authentication successful so generate jwt and refresh tokens
+            var jwtToken = generateJwtToken(user);
             var refreshToken = generateRefreshToken(ipAddress);
 
             // save refresh token
-            //user.RefreshTokens.Add(refreshToken);
-            //_context.Update(user);
-            //_context.SaveChanges();
+            user.RefreshTokens = new List<RefreshToken> { refreshToken };
+            _context.Update(user);
+            _context.SaveChanges();
 
-            return new AuthenticateResponse(user, token, refreshToken.Token);
+            return new AuthenticateResponse(user, jwtToken, refreshToken.Token);
         }
 
         public AuthenticateResponse RefreshToken(string token, string ipAddress)
         {
-            //var user = _context.Users.SingleOrDefault(u => u.RefreshTokens.Any(t => t.Token == token));
-            var user = _users.FirstOrDefault();
+            var user = _context.Users.SingleOrDefault(u => u.RefreshTokens.Any(t => t.Token == token));
 
             // return null if no user found with token
             if (user == null) return null;
@@ -71,9 +62,8 @@ namespace RestAPI_Core.Business
             refreshToken.RevokedByIp = ipAddress;
             refreshToken.ReplacedByToken = newRefreshToken.Token;
             user.RefreshTokens.Add(newRefreshToken);
-
-            //_context.Update(user);
-            //_context.SaveChanges();
+            _context.Update(user);
+            _context.SaveChanges();
 
             // generate new jwt
             var jwtToken = generateJwtToken(user);
@@ -83,8 +73,7 @@ namespace RestAPI_Core.Business
 
         public bool RevokeToken(string token, string ipAddress)
         {
-            var user = _users.FirstOrDefault();
-            //            var user = _context.Users.SingleOrDefault(u => u.RefreshTokens.Any(t => t.Token == token));
+            var user = _context.Users.SingleOrDefault(u => u.RefreshTokens.Any(t => t.Token == token));
 
             // return false if no user found with token
             if (user == null) return false;
@@ -97,36 +86,34 @@ namespace RestAPI_Core.Business
             // revoke token and save
             refreshToken.Revoked = DateTime.UtcNow;
             refreshToken.RevokedByIp = ipAddress;
-
-            //_context.Update(user);
-            //_context.SaveChanges();
+            _context.Update(user);
+            _context.SaveChanges();
 
             return true;
         }
 
         public IEnumerable<User> GetAll()
         {
-            return _users;
+            return _context.Users;
         }
 
         public User GetById(int id)
         {
-            //return _context.Users.Find(id);
-            return _users.FirstOrDefault();
+            return _context.Users.Find(id);
         }
 
         // helper methods
 
         private string generateJwtToken(User user)
         {
-
             var tokenHandler = new JwtSecurityTokenHandler();
             var key = Encoding.ASCII.GetBytes(_appSettings.JWTSecert);
             var tokenDescriptor = new SecurityTokenDescriptor
             {
                 Subject = new ClaimsIdentity(new Claim[]
                 {
-                    new Claim(ClaimTypes.Name, user.Id.ToString())
+                    new Claim(ClaimTypes.Name, user.Id.ToString()),
+                    new Claim(ClaimTypes.Role, user.Role)
                 }),
                 Expires = DateTime.UtcNow.AddMinutes(15),
                 SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)

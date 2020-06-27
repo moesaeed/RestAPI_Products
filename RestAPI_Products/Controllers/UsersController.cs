@@ -3,13 +3,14 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using RestAPI_Core.Business;
 using RestAPI_Core.Contracts;
+using RestAPI_Core.Models;
 using System;
 
 namespace RestAPI_Products.Controllers
 {
     [Authorize]
-    [Route("api/v1/[controller]")]
     [ApiController]
+    [Route("api/[controller]")]
     public class UsersController : ControllerBase
     {
         private IUserService _userService;
@@ -21,7 +22,7 @@ namespace RestAPI_Products.Controllers
 
         [AllowAnonymous]
         [HttpPost("authenticate")]
-        public IActionResult Authenticate([FromBody]AuthenticateRequest model)
+        public IActionResult Authenticate([FromBody] AuthenticateRequest model)
         {
             var response = _userService.Authenticate(model, ipAddress());
 
@@ -29,6 +30,7 @@ namespace RestAPI_Products.Controllers
                 return BadRequest(new { message = "Username or password is incorrect" });
 
             setTokenCookie(response.RefreshToken);
+
             return Ok(response);
         }
 
@@ -64,6 +66,21 @@ namespace RestAPI_Products.Controllers
             return Ok(new { message = "Token revoked" });
         }
 
+        [HttpGet("GetAll")]
+        [Authorize(Roles = Role.Admin)]
+        public IActionResult GetAll()
+        {
+            var users = _userService.GetAll();
+            return Ok(users);
+        }
+
+        [HttpGet("{id}")]
+        public IActionResult GetById(int id)
+        {
+            var user = _userService.GetById(id);
+            return Ok(user);
+        }
+
         [HttpGet("{id}/refresh-tokens")]
         public IActionResult GetRefreshTokens(int id)
         {
@@ -89,14 +106,6 @@ namespace RestAPI_Products.Controllers
                 return Request.Headers["X-Forwarded-For"];
             else
                 return HttpContext.Connection.RemoteIpAddress.MapToIPv4().ToString();
-        }
-
-
-        [HttpGet("GetAll")]
-        public IActionResult GetAll()
-        {
-            var users = _userService.GetAll();
-            return Ok(users);
         }
     }
 }

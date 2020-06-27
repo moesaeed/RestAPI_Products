@@ -1,8 +1,10 @@
-﻿using System;
-
+﻿using Microsoft.EntityFrameworkCore;
+using System;
+using System.ComponentModel.DataAnnotations;
 
 namespace RestAPI_Core.Models
 {
+    [Owned]
     public class RefreshToken
     {
         public string Token { get; set; }

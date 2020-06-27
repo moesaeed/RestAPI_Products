@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -9,6 +10,8 @@ using Microsoft.OpenApi.Models;
 using RestAPI_Core;
 using RestAPI_Core.Business;
 using RestAPI_Core.Data;
+using RestAPI_Core.Models;
+using System;
 using System.Text;
 
 namespace RestAPI_Products
@@ -25,17 +28,11 @@ namespace RestAPI_Products
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
-            services.AddControllers();
+            // in memory database used for simplicity, change to a real db for production applications
+            services.AddDbContext<DataContext>(x => x.UseInMemoryDatabase("HelloWorld"));
 
-            // Add application services.
-            services.AddTransient<IProductBusiness, ProductBusiness>();
-            services.AddTransient<IProductRepository, ProductRepository>();
-
-            // Register the Swagger generator, defining one or more Swagger documents
-            services.AddSwaggerGen(c =>
-            {
-                c.SwaggerDoc("v1", new OpenApiInfo { Title = "ASP.NET Core RESTful API", Version = "v1" });
-            });
+            services.AddCors();
+            services.AddControllers().AddJsonOptions(x => x.JsonSerializerOptions.IgnoreNullValues = true);
 
             var appSettingsSection = Configuration.GetSection("AppSettings");
             services.Configure<AppSettings>(appSettingsSection);
@@ -57,38 +54,59 @@ namespace RestAPI_Products
                     ValidateIssuerSigningKey = true,
                     IssuerSigningKey = new SymmetricSecurityKey(key),
                     ValidateIssuer = false,
-                    ValidateAudience = false
+                    ValidateAudience = false,
+                    // set clockskew to zero so tokens expire exactly at token expiration time (instead of 5 minutes later)
+                    ClockSkew = TimeSpan.Zero
                 };
             });
 
-            // configure DI for application services
+            // Add application services.
+            services.AddTransient<IProductBusiness, ProductBusiness>();
+            services.AddTransient<IProductRepository, ProductRepository>();
             services.AddScoped<IUserService, UserService>();
+
+            // Register the Swagger generator, defining one or more Swagger documents
+            services.AddSwaggerGen(c =>
+            {
+                c.SwaggerDoc("v1", new OpenApiInfo { Title = "ASP.NET Core RESTful API", Version = "v1" });
+            });
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
-        public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env, DataContext context)
         {
+            context.Database.EnsureCreated();
+            bool sdfsdf = context.Database.CanConnect();
+            // add hardcoded test user to db on startup
+            // plain text password is used for simplicity, hashed passwords should be used in production applications
+            context.Users.AddRange(
+                new User { Id = 12, FirstName = "Admin", LastName = "User", Username = "admin", Password = "admin", Role = Role.Admin },
+                new User { Id = 14, FirstName = "Normal", LastName = "User", Username = "user", Password = "user", Role = Role.User }
+                );
+            context.SaveChanges();
+
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
             }
 
             app.UseHttpsRedirection();
-
             app.UseRouting();
+
+            // global cors policy
+            app.UseCors(x => x
+                .SetIsOriginAllowed(origin => true)
+                .AllowAnyMethod()
+                .AllowAnyHeader()
+                .AllowCredentials());
+
             app.UseAuthentication();
             app.UseAuthorization();
-
 
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapControllers();
             });
-
-            app.UseCors(x => x
-               .AllowAnyOrigin()
-               .AllowAnyMethod()
-               .AllowAnyHeader());
 
             // Enable middleware to serve generated Swagger as a JSON endpoint.
             app.UseSwagger();
